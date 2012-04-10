@@ -1,0 +1,191 @@
+;;;;;;;;;
+;
+; RC4 for DCPU-16
+; dcpu-crypto library
+; Copyright 2012 Scott Phillips
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0. If a copy of the MPL was not distributed with this
+; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+;
+;;;;;;;;;
+
+:rc4_init ;(void *key, int key_len_bytes, int state[129])
+        SET PUSH, J
+        SET J, SP
+        SUB SP, 0x03
+        SET PUSH, X
+        SET PUSH, Y
+        SET PUSH, I
+        SET PUSH, Z
+
+        SET [0xFFFD + J], A
+        SET [0xFFFE + J], B
+        SET [0xFFFF + J], C
+
+                        ; for i from 0 to 255
+                        ;     S[i] := i
+                        ; endfor
+        SET I, 0x0100
+        SET A, SP       ; Save SP in A
+        SET SP, [0xFFFF + J]
+:L1     SET POP, I      ; Using SP autoincrementing for convenience
+        ADD I, 0x0202
+        IFN O, 0x01
+        SUB PC, 0x05    ; GOTO L1
+        SET SP, A
+
+                        ; j := 0
+                        ; for i from 0 to 255
+                        ;     j := (j + S[i] + key[i mod keylength]) mod 256
+                        ;     swap values of S[i] and S[j]
+                        ; endfor
+        SET I, 0x00
+        SET Z, 0x00
+:L2     SET A, I
+        SHR A, 0x01
+        ADD A, [0xFFFF + J]
+        SET C, I
+        MOD C, [0xFFFE + J]
+        SET X, C
+        SHR X, 0x01
+        ADD X, [0xFFFD + J]
+        SET X, [X]
+        IFB C, 0x01
+        SHR X, 0x08
+        ADD Z, X        ; j += key[i mod keylength]
+        SET X, [A]
+        IFB I, 0x01
+        SHR X, 0x08
+        ADD Z, X        ; j += S[i]
+        AND Z, 0x00FF
+        AND X, 0x00FF
+        SET B, Z
+        SHR B, 0x01
+        ADD B, [0xFFFF + J]
+        SET Y, [B]      ; tmp = S[j]
+        IFB Z, 0x01
+        ADD PC, 0x03    ; GOTO L4
+        AND [B], 0xFF00
+        ADD PC, 0x04    ; GOTO L5
+:L4     SHL X, 0x08
+        SHR Y, 0x08
+        AND [B], 0x00FF
+:L5     BOR [B], X      ; S[j] = S[i]
+        IFB I, 0x01
+        ADD PC, 0x05    ; GOTO L6
+        AND [A], 0xFF00
+        AND Y, 0x00FF
+        ADD PC, 0x03    ; GOTO L7
+:L6     AND [A], 0x00FF
+        SHL Y, 0x08
+:L7     BOR [A], Y      ; S[i] = tmp
+        ADD I, 0x01
+        IFN I, 0x100
+        SUB PC, 0x35    ; GOTO L2
+
+        SET A, [0xFFFF + J]
+        ADD A, 0x0100
+        SET [A], 0x00
+
+        SET Z, POP
+        SET I, POP
+        SET Y, POP
+        SET X, POP
+        ADD SP, 0x03
+        SET J, POP
+        SET PC, POP
+
+:rc4_crypt ;(void *msg, int len, int state[129])
+        SET PUSH, J
+        SET J, SP
+        SUB SP, 0x04
+        SET PUSH, X
+        SET PUSH, Y
+        SET PUSH, I
+        SET PUSH, Z
+
+        SET [0xFFFC + J], A
+        SET [0xFFFD + J], B
+        SET [0xFFFE + J], 0x00
+        SET [0xFFFF + J], C
+
+        SET I, [0x0100 + C]
+        SET Z, I
+        AND I, 0x00FF
+        SHR Z, 0x08
+
+                        ; while GeneratingOutput:
+                        ;     i := (i + 1) mod 256
+                        ;     j := (j + S[i]) mod 256
+                        ;     swap values of S[i] and S[j]
+                        ;     K := S[(S[i] + S[j]) mod 256]
+                        ;     output K
+                        ; endwhile
+:L8     IFE [0xFFFD + J], 0x00
+        ADD PC, 0x4A    ; GOTO L13
+        ADD I, 0x01
+        AND I, 0x00FF
+        SET X, I
+        SHR X, 0x01
+        ADD X, C
+        SET X, [X]
+        IFB I, 0x01
+        SHR X, 0x08
+        AND X, 0x00FF
+        ADD Z, X
+        AND Z, 0x00FF
+        SET Y, Z
+        SHR Y, 0x01
+        ADD Y, C
+        SET A, [Y]      ; tmp = S[j]
+        IFB Z, 0x01
+        ADD PC, 0x05    ; GOTO L9
+        AND A, 0x00FF
+        AND [Y], 0xFF00
+        ADD PC, 0x04    ; GOTO L10
+:L9     SHR A, 0x08
+        SHL X, 0x08
+        AND [Y], 0x00FF
+:L10    BOR [Y], X      ; S[j] = S[i]
+        IFB Z, 0x01
+        SHR X, 0x08
+        SET Y, I
+        SHR Y, 0x01
+        ADD Y, C
+        IFB I, 0x01
+        ADD PC, 0x03    ; GOTO L11
+        AND [Y], 0xFF00
+        ADD PC, 0x03    ; GOTO L12
+:L11    SHL A, 0x08
+        AND [Y], 0x00FF
+:L12    BOR [Y], A      ; S[i] = tmp
+        IFB I, 0x01
+        SHR A, 0x08
+        ADD A, X
+        SET X, A
+        AND A, 0x00FF
+        SHR A, 0x01
+        ADD A, C
+        SET A, [A]
+        IFB X, 0x01
+        SHR A, 0x08
+        AND A, 0x00FF
+        IFB [0xFFFE + J], 0x01
+        SHL A, 0x08
+        SET X, [0xFFFC + J]
+        XOR [X], A
+        XOR [0xFFFE + J], 0x01
+        IFE [0xFFFE + J], 0x00
+        ADD [0xFFFC + J], 0x01
+        SUB [0xFFFD + J], 0x01
+        SUB PC, 0x4C    ; GOTO L8
+
+
+:L13    SET Z, POP
+        SET I, POP
+        SET Y, POP
+        SET X, POP
+        ADD SP, 0x04
+        SET J, POP
+        SET PC, POP

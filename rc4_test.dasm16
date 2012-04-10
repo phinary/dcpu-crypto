@@ -1,0 +1,72 @@
+;;;;;;;;;
+;
+; RC4 test program for DCPU-16
+; dcpu-crypto library
+; Copyright 2012 Scott Phillips
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0. If a copy of the MPL was not distributed with this
+; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+;
+;;;;;;;;;
+
+        ADD PC, 0x0A
+
+:key    dat 0x6553, 0x7263, 0x7465
+:data   dat 0x7441, 0x6174, 0x6b63, 0x6120, 0x2074, 0x6164, 0x6e77
+
+:rc4_test
+        SET A, key
+        SET B, 0x0006
+        SET C, 0x1000
+        JSR rc4_init
+        SET A, data
+        SET B, 0x0E
+        SET C, 0x1000
+        JSR rc4_crypt
+        SET A, data
+        SET B, 0x0E
+        JSR hexdump
+        SUB PC, 1
+
+:hexdump; (void *addr, int len)
+        SET PUSH, J
+        SET J, SP
+        SUB SP, 0x01
+        SET PUSH, X
+        SET PUSH, Y
+        SET [0xFFFF + J], 0x00
+        SET Y, 0x8000
+
+        IFE B, 0x00
+        ADD PC, 0x1F
+        IFN [0xFFFF + J], 0x00
+        ADD PC, 0x04
+        SET C, [A]
+        SHL C, 0x08
+        BOR C, O
+        ADD A, 0x01
+        XOR [0xFFFF + J], 0x01
+        SHL C, 0x04
+        SET X, O
+        ADD X, 0x0030
+        IFG X, 0x0039
+        ADD X, 0x0027
+        SET [Y], X
+        ADD Y, 0x01
+        SHL C, 0x04
+        SET X, O
+        ADD X, 0x0030
+        IFG X, 0x0039
+        ADD X, 0x0027
+        SET [Y], X
+        ADD Y, 0x01
+        SUB B, 0x01
+        SUB PC, 0x21
+
+        SET Y, POP
+        SET X, POP
+        ADD SP, 0x01
+        SET J, POP
+        SET PC, POP
+
